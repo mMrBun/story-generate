@@ -136,6 +136,26 @@ def total_non_space_chars(pages: list[dict[str, Any]]) -> int:
     return sum(non_space_char_count(str(page.get("text", ""))) for page in pages)
 
 
+def normalized_title(value: str) -> str:
+    return re.sub(r"[^a-z0-9\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]", "", value.lower())
+
+
+def validate_story_title(title: str, category: dict[str, str], language_code: str) -> None:
+    normalized = normalized_title(title)
+    forbidden_values = {
+        category["slug"],
+        category["en"],
+        category["zh"],
+        category["en"].replace(" ", ""),
+    }
+    forbidden = {normalized_title(value) for value in forbidden_values if value}
+
+    if normalized in forbidden or len(normalized) < 6:
+        raise RuntimeError(
+            f"Generated {language_code} title is not story-specific: {title!r} for category {category['slug']}"
+        )
+
+
 def story_text_for_prompt(story: dict[str, Any]) -> str:
     page_text = "\n".join(
         f"Page {page['index']}: {page['text']}"
@@ -203,6 +223,7 @@ Hard requirements:
 - category_slug must be exactly "{category['slug']}".
 - slug must be exactly "{slug}".
 - The story must be calm, warm, imaginative, and suitable before sleep.
+- The title must be a unique literary story title, not the category name, not the category slug, and not a generic label.
 - The category value should emerge naturally through the plot, not as a lecture.
 - Avoid violence, horror, death, weapons, punishment, shame, or intense conflict.
 - Do not reference or imitate existing copyrighted characters, franchises, or famous fairy tales.
@@ -238,6 +259,7 @@ Hard requirements:
     if story["category_slug"] != category["slug"]:
         raise RuntimeError(f"Generated category_slug mismatch: {story['category_slug']} != {category['slug']}")
 
+    validate_story_title(str(story["title"]), category, "en")
     story["pages"] = validate_pages(story["pages"], PAGE_COUNT)
     words = total_words(story["pages"])
     if words < MIN_SOURCE_WORDS:
@@ -249,8 +271,9 @@ Hard requirements:
     return story
 
 
-def translate_story(client: OpenAI, canonical_story: dict[str, Any], target_language: str) -> dict[str, Any]:
+def translate_story(client: OpenAI, canonical_story: dict[str, Any], target_language: str, category: dict[str, str]) -> dict[str, Any]:
     if target_language == "en":
+        validate_story_title(str(canonical_story["title"]), category, "en")
         return {
             "language_code": "en",
             "title": canonical_story["title"],
@@ -292,6 +315,7 @@ JSON schema:
 Translation requirements:
 - Preserve the plot, page count, page order, emotional tone, and bedtime pacing.
 - Translate title, intro, and every page text.
+- The translated title must still be a story title, not the category name.
 - Do not translate image prompts; image prompts are stored separately from the English canonical story.
 - Do not summarize, shorten, omit scenes, or add new plot events.
 - {profile['length_rule']}
@@ -321,6 +345,7 @@ Source story:
         raise RuntimeError(f"OpenAI returned empty translation content for {target_language}")
 
     translated = safe_json_loads(content)
+    validate_story_title(str(translated.get("title", "")), category, target_language)
     translated["pages"] = validate_pages(translated.get("pages"), PAGE_COUNT)
     translated["language_code"] = target_language
 
@@ -519,11 +544,16 @@ def generate_story_with_retries(openai_client: OpenAI, category: dict[str, str],
     raise RuntimeError(f"Failed to generate valid canonical story for {slug}") from last_error
 
 
-def translate_story_with_retries(openai_client: OpenAI, story: dict[str, Any], language_code: str) -> dict[str, Any]:
+def translate_story_with_retries(
+    openai_client: OpenAI,
+    story: dict[str, Any],
+    language_code: str,
+    category: dict[str, str],
+) -> dict[str, Any]:
     last_error: Exception | None = None
     for attempt in range(1, TRANSLATION_RETRIES + 1):
         try:
-            return translate_story(openai_client, story, language_code)
+            return translate_story(openai_client, story, language_code, category)
         except Exception as exc:
             last_error = exc
             print(
@@ -551,11 +581,11 @@ def generate_and_insert_category_story(
     print(f"Generating canonical English story for category: {category['en']} ({category['slug']})")
     canonical_story = generate_story_with_retries(openai_client, category, slug)
 
-    translations = {"en": translate_story(openai_client, canonical_story, "en")}
+    translations = {"en": translate_story(openai_client, canonical_story, "en", category)}
     for language_code in TARGET_LANGUAGES:
         if language_code == "en":
             continue
-        translations[language_code] = translate_story_with_retries(openai_client, canonical_story, language_code)
+        translations[language_code] = translate_story_with_retries(openai_client, canonical_story, language_code, category)
 
     base_path = f"stories/{slug}"
     cover_path = f"{base_path}/cover.{IMAGE_FORMAT}"
