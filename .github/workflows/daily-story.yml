@@ -1,4 +1,4 @@
-name: Generate Daily Story
+name: Import Stories
 
 on:
   workflow_dispatch:
@@ -6,29 +6,27 @@ on:
     - cron: "0 1 * * *"
 
 concurrency:
-  group: generate-daily-story
+  group: import-stories
   cancel-in-progress: false
 
 jobs:
-  generate:
+  import:
     runs-on: ubuntu-latest
 
     env:
+      MXNZP_APP_ID: ${{ secrets.MXNZP_APP_ID }}
+      MXNZP_APP_SECRET: ${{ secrets.MXNZP_APP_SECRET }}
+      DEEPLX_URL: ${{ secrets.DEEPLX_URL }}
+      DEEPLX_URLS: ${{ secrets.DEEPLX_URLS }}
+      DEEPLX_TOKEN: ${{ secrets.DEEPLX_TOKEN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       SUPABASE_STORAGE_BUCKET: ${{ secrets.SUPABASE_STORAGE_BUCKET }}
-      STORY_GENERATION_ENABLED: ${{ vars.STORY_GENERATION_ENABLED || 'true' }}
-      GENERATE_ALL_CATEGORIES: ${{ vars.GENERATE_ALL_CATEGORIES || 'false' }}
-      TARGET_LANGUAGES: ${{ vars.TARGET_LANGUAGES || 'zh-Hans,en,ja,ko' }}
-      PUBLISH_IMMEDIATELY: ${{ vars.PUBLISH_IMMEDIATELY || 'false' }}
-      MAX_CATEGORIES_PER_RUN: ${{ vars.MAX_CATEGORIES_PER_RUN || '0' }}
-      STORY_MIN_PAGE_COUNT: ${{ vars.STORY_MIN_PAGE_COUNT || '6' }}
-      STORY_MAX_PAGE_COUNT: ${{ vars.STORY_MAX_PAGE_COUNT || '10' }}
-      CONTINUE_ON_CATEGORY_FAILURE: ${{ vars.CONTINUE_ON_CATEGORY_FAILURE || 'true' }}
-      OPENAI_TEXT_REQUEST_DELAY_SECONDS: ${{ vars.OPENAI_TEXT_REQUEST_DELAY_SECONDS || '2' }}
-      OPENAI_IMAGE_REQUEST_DELAY_SECONDS: ${{ vars.OPENAI_IMAGE_REQUEST_DELAY_SECONDS || '12' }}
-      BATCH_CATEGORY_DELAY_SECONDS: ${{ vars.BATCH_CATEGORY_DELAY_SECONDS || '30' }}
+      STORY_GENERATION_ENABLED: ${{ vars.STORY_GENERATION_ENABLED }}
+      STORIES_PER_CATEGORY_PER_RUN: ${{ vars.STORIES_PER_CATEGORY_PER_RUN }}
 
     steps:
       - name: Checkout repository
@@ -43,5 +41,5 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Generate story
+      - name: Import stories
         run: uv run python scripts/generate_daily_story.py

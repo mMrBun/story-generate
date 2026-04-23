@@ -1,1 +1,1 @@
-"""DreamNest daily story generation package."""
+"""DreamNest external story import pipeline."""
